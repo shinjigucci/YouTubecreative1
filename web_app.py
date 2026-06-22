@@ -272,7 +272,7 @@ def run_job(job_id, form):
         env["FISH_SPEED"] = fish_speed
         generate_cmd = [
             str(PYTHON),
-            "scripts/generate_youtube_ad_broll.py",
+            "generate_youtube_ad_broll.py",
             "--script",
             str(script_path),
             "--project",
@@ -291,7 +291,7 @@ def run_job(job_id, form):
         set_status(job_id, "running", 88, "Kling 10秒と本編を結合しています")
         assemble_cmd = [
             str(PYTHON),
-            "scripts/assemble_two_kling_intro.py",
+            "assemble_two_kling_intro.py",
             "--project",
             project,
             "--script",
