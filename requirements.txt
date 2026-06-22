@@ -1,0 +1,7 @@
+﻿httpx>=0.27.0
+imageio>=2.34.0
+imageio-ffmpeg>=0.5.1
+numpy>=1.26.0
+Pillow>=10.3.0
+ormsgpack>=1.5.0
+python-dotenv>=1.0.1

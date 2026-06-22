@@ -1,0 +1,10 @@
+﻿services:
+  - type: web
+    name: kling10-youtube-ad-generator-clean
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python web_app.py
+    envVars:
+      - key: ALLOWED_ORIGIN
+        value: '*'
