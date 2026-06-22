@@ -140,13 +140,20 @@ def kling_create(api_key, prompt, mode, duration, aspect_ratio, model_name):
         "mode": mode,
     }
     response = None
+    timeout = httpx.Timeout(connect=30.0, read=240.0, write=60.0, pool=30.0)
     for attempt in range(len(KLING_CREATE_RETRY_DELAYS) + 1):
-        response = httpx.post(
-            "https://api.klingai.com/v1/videos/text2video",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=60,
-        )
+        try:
+            response = httpx.post(
+                "https://api.klingai.com/v1/videos/text2video",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=timeout,
+            )
+        except httpx.TimeoutException:
+            if attempt >= len(KLING_CREATE_RETRY_DELAYS):
+                raise TimeoutError("Kling APIの応答待ちがタイムアウトしました。数分おいて再実行してください。")
+            time.sleep(KLING_CREATE_RETRY_DELAYS[attempt])
+            continue
         if response.status_code != 429:
             break
         if attempt >= len(KLING_CREATE_RETRY_DELAYS):
@@ -166,8 +173,13 @@ def kling_poll(api_key, task_id, timeout_seconds=900):
     url = f"https://api.klingai.com/v1/videos/text2video/{task_id}"
     deadline = time.time() + timeout_seconds
     last = None
+    timeout = httpx.Timeout(connect=30.0, read=180.0, write=60.0, pool=30.0)
     while time.time() < deadline:
-        response = httpx.get(url, headers={"Authorization": f"Bearer {api_key}"}, timeout=60)
+        try:
+            response = httpx.get(url, headers={"Authorization": f"Bearer {api_key}"}, timeout=timeout)
+        except httpx.TimeoutException:
+            time.sleep(20)
+            continue
         if response.status_code == 429:
             time.sleep(retry_after_seconds(response, 180))
             continue
@@ -190,7 +202,7 @@ def kling_poll(api_key, task_id, timeout_seconds=900):
 
 def download_file(url, path):
     path.parent.mkdir(parents=True, exist_ok=True)
-    with httpx.stream("GET", url, timeout=180) as response:
+    with httpx.stream("GET", url, timeout=httpx.Timeout(connect=30.0, read=300.0, write=60.0, pool=30.0)) as response:
         response.raise_for_status()
         with path.open("wb") as handle:
             for chunk in response.iter_bytes():
