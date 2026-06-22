@@ -25,6 +25,7 @@ KLING_LOCK = threading.Lock()
 KLING_MODEL = "kling-v1"
 KLING_MODE = "std"
 KLING_CREATE_RETRY_DELAYS = [180, 300, 420, 600, 900]
+JOB_DIR = ROOT / "output" / "jobs"
 
 
 def now_project_name():
@@ -210,6 +211,34 @@ def download_file(url, path):
                     handle.write(chunk)
 
 
+def job_path(job_id):
+    return JOB_DIR / f"{job_id}.json"
+
+
+def save_job(job):
+    JOB_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = job_path(job["id"]).with_suffix(".tmp")
+    tmp.write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(job_path(job["id"]))
+
+
+def load_job(job_id):
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+    if job:
+        return job
+    path = job_path(job_id)
+    if not path.exists():
+        return None
+    try:
+        job = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    with JOBS_LOCK:
+        JOBS[job_id] = job
+    return job
+
+
 def set_status(job_id, status=None, progress=None, message=None, result=None, error=None):
     with JOBS_LOCK:
         job = JOBS[job_id]
@@ -223,6 +252,7 @@ def set_status(job_id, status=None, progress=None, message=None, result=None, er
             job["result"] = result
         if error is not None:
             job["error"] = error
+        save_job(job)
 
 
 def run_job(job_id, form):
@@ -541,8 +571,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path.startswith("/api/jobs/"):
             job_id = parsed.path.rsplit("/", 1)[-1]
-            with JOBS_LOCK:
-                job = JOBS.get(job_id)
+            job = load_job(job_id)
             if not job:
                 self.send_json(404, {"error": "job not found"})
                 return
@@ -551,8 +580,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/download":
             query = parse_qs(parsed.query)
             job_id = (query.get("job") or [""])[0]
-            with JOBS_LOCK:
-                job = JOBS.get(job_id)
+            job = load_job(job_id)
             path = Path((job or {}).get("result", {}).get("video", ""))
             if not job or not path.exists():
                 self.send_json(404, {"error": "file not found"})
@@ -568,8 +596,7 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/open-folder":
             query = parse_qs(parsed.query)
             job_id = (query.get("job") or [""])[0]
-            with JOBS_LOCK:
-                job = JOBS.get(job_id)
+            job = load_job(job_id)
             path = Path((job or {}).get("result", {}).get("video", ""))
             if not job or not path.exists():
                 self.send_json(404, {"error": "folder not found"})
@@ -594,8 +621,10 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length).decode("utf-8")
         form = parse_qs(body)
         job_id = uuid.uuid4().hex
+        job = {"id": job_id, "status": "queued", "progress": 0, "message": "待機中", "error": "", "result": {}}
         with JOBS_LOCK:
-            JOBS[job_id] = {"id": job_id, "status": "queued", "progress": 0, "message": "待機中", "error": "", "result": {}}
+            JOBS[job_id] = job
+            save_job(job)
         thread = threading.Thread(target=run_job, args=(job_id, form), daemon=True)
         thread.start()
         self.send_json(202, {"job_id": job_id})
