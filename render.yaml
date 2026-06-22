@@ -1,6 +1,6 @@
 ﻿services:
   - type: web
-    name: kling10-youtube-ad-generator-clean
+    name: youtubecreative1
     env: python
     plan: free
     buildCommand: pip install -r requirements.txt

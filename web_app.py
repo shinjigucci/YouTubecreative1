@@ -321,7 +321,8 @@ def run_job(job_id, form):
             },
         )
     except Exception as exc:
-        set_status(job_id, "error", message="生成に失敗しました", error=str(exc))
+        detail = str(exc).strip()
+        set_status(job_id, "error", message=f"生成に失敗しました: {detail[-1200:]}", error=detail)
 
 
 HTML = r"""<!doctype html>
