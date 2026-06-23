@@ -26,6 +26,28 @@ KLING_MODEL = "kling-v1"
 KLING_MODE = "std"
 KLING_CREATE_RETRY_DELAYS = [180, 300, 420, 600, 900]
 JOB_DIR = ROOT / "output" / "jobs"
+TONE_SAMPLES = {
+    "professional_clean": (
+        "clean Japanese business presentation style, bright white UI panels, calm navy and teal accents, "
+        "organized landing-page mockups, trustworthy corporate training look"
+    ),
+    "premium_saas": (
+        "premium SaaS advertising style, polished dark interface, glassy product UI, refined lighting, "
+        "high-end automation dashboard and elegant motion"
+    ),
+    "warm_beginner": (
+        "warm beginner-friendly online course style, soft natural light, approachable workspace, "
+        "simple explanatory visuals, gentle green and orange accents"
+    ),
+    "dynamic_direct": (
+        "dynamic direct-response ad style, energetic camera movement, bold contrast, fast workflow visuals, "
+        "strong automation benefit and clear before-after feeling"
+    ),
+    "minimal_black_orange": (
+        "minimal Claude Code inspired black and orange style, strong brand contrast, clean dark UI, "
+        "bold orange automation elements, premium developer-tool atmosphere"
+    ),
+}
 
 
 def now_project_name():
@@ -44,14 +66,20 @@ def first_sentences(script, count=3):
     return sentences[:count]
 
 
-def fallback_kling_prompts(script):
+def tone_guidance(tone_sample):
+    return TONE_SAMPLES.get(tone_sample or "", TONE_SAMPLES["professional_clean"])
+
+
+def fallback_kling_prompts(script, tone_sample="professional_clean"):
     sentences = first_sentences(script, 3)
     hook = sentences[0] if sentences else "A strong business problem appears."
     next_line = sentences[1] if len(sentences) > 1 else "The business owner creates many posts but has no clear next step."
+    style = tone_guidance(tone_sample)
     prompt1 = (
         "A cinematic 5-second Japanese YouTube ad opening. A small business owner sits at a laptop, "
         "overwhelmed by marketing work and social media planning, then notices an AI coding automation workflow "
         "on the screen. Show a polished landing-page mockup, document cards, and automation flow elements. "
+        f"Visual tone sample: {style}. "
         "The mood clearly expresses the hook: "
         f"{hook} Modern Japanese business atmosphere, realistic live-action style, clean cinematic lighting, "
         "smooth camera move, no readable text, no logos, 16:9, professional ad hook, high quality. "
@@ -62,6 +90,7 @@ def fallback_kling_prompts(script):
         "many social media posts, landing page sections, PDF lead magnet screens, and video script drafts on a laptop. "
         "Multiple document windows and landing-page mockups connect into an automation funnel, but the viewer can "
         "clearly feel the contrast between scattered content and an organized automated path. "
+        f"Visual tone sample: {style}. "
         f"The scene should match this narration idea: {next_line} Show abstract UI cards flowing but stopping at a blank dead end. "
         "Modern Japanese business office, realistic live-action style, clean lighting, smooth camera movement, "
         "no readable text, no logos, 16:9, professional ad b-roll, high quality. "
@@ -70,9 +99,10 @@ def fallback_kling_prompts(script):
     return prompt1, prompt2
 
 
-def openai_kling_prompts(openai_key, model, script):
+def openai_kling_prompts(openai_key, model, script, tone_sample="professional_clean"):
     if not openai_key:
-        return fallback_kling_prompts(script)
+        return fallback_kling_prompts(script, tone_sample)
+    style = tone_guidance(tone_sample)
     instruction = (
         "Create two English prompts for Kling text-to-video. Each prompt must be exactly one 5-second 16:9 live-action "
         "business ad scene. No readable text, no logos, no native audio. The final app will overlay a Claude Code brand "
@@ -80,6 +110,7 @@ def openai_kling_prompts(openai_key, model, script):
         "the opening hook with a premium AI automation workflow and attractive landing-page mockup elements. "
         "Prompt 2 visualizes the next narration line: creating many posts/scripts, LP sections, PDF lead magnet elements, "
         "and then organizing them into a marketing automation funnel. Emphasize automation visually. "
+        f"Use this tone sample consistently: {style}. "
         "Return JSON with keys prompt1 and prompt2 only."
     )
     try:
@@ -112,7 +143,7 @@ def openai_kling_prompts(openai_key, model, script):
         parsed = json.loads(text)
         return parsed["prompt1"], parsed["prompt2"]
     except Exception:
-        return fallback_kling_prompts(script)
+        return fallback_kling_prompts(script, tone_sample)
 
 
 def retry_after_seconds(response, fallback):
@@ -258,6 +289,7 @@ def set_status(job_id, status=None, progress=None, message=None, result=None, er
 def run_job(job_id, form):
     project = safe_project_name(form.get("project", [""])[0])
     script = form.get("script", [""])[0].strip()
+    tone_sample = form.get("tone_sample", ["professional_clean"])[0].strip() or "professional_clean"
     openai_key = form.get("openai_key", [""])[0].strip()
     openai_model = form.get("openai_model", ["gpt-4.1-mini"])[0].strip()
     kling_api_key = form.get("kling_api_key", [""])[0].strip()
@@ -283,9 +315,9 @@ def run_job(job_id, form):
         script_path.write_text(script, encoding="utf-8")
 
         set_status(job_id, "running", 10, "Kling用プロンプトを作成しています")
-        prompt1, prompt2 = openai_kling_prompts(openai_key, openai_model, script)
+        prompt1, prompt2 = openai_kling_prompts(openai_key, openai_model, script, tone_sample)
         (input_dir / "kling_prompts.json").write_text(
-            json.dumps({"prompt1": prompt1, "prompt2": prompt2}, ensure_ascii=False, indent=2),
+            json.dumps({"tone_sample": tone_sample, "tone_guidance": tone_guidance(tone_sample), "prompt1": prompt1, "prompt2": prompt2}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
@@ -327,6 +359,8 @@ def run_job(job_id, form):
             fish_speed,
             "--max-chars",
             "34",
+            "--tone-sample",
+            tone_sample,
         ]
         subprocess.run(generate_cmd, cwd=ROOT, env=env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 

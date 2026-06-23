@@ -180,6 +180,7 @@ def main() -> int:
     parser.add_argument("--fish-model", default="s2-pro")
     parser.add_argument("--fish-speed", default="1.03")
     parser.add_argument("--max-chars", type=int, default=34)
+    parser.add_argument("--tone-sample", default="professional_clean")
     args = parser.parse_args()
 
     script_path = Path(args.script)
