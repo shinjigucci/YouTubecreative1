@@ -14,7 +14,7 @@ from PIL import Image, ImageDraw, ImageFont
 import imageio_ffmpeg
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parent
 W, H = 1280, 720
 FPS = 30
 
