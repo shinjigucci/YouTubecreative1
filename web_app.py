@@ -286,6 +286,47 @@ def set_status(job_id, status=None, progress=None, message=None, result=None, er
         save_job(job)
 
 
+def find_final_video(project):
+    filename = "youtube_ad_broll_kling10.mp4"
+    candidates = [
+        ROOT / "output" / project / filename,
+        ROOT.parent / "output" / project / filename,
+        Path.cwd() / "output" / project / filename,
+    ]
+    for candidate in candidates:
+        if candidate.exists() and candidate.stat().st_size > 0:
+            return candidate
+
+    for search_root in [ROOT / "output", ROOT.parent / "output", Path.cwd() / "output"]:
+        if not search_root.exists():
+            continue
+        matches = sorted(search_root.rglob(filename), key=lambda p: p.stat().st_mtime, reverse=True)
+        for match in matches:
+            if match.exists() and match.stat().st_size > 0:
+                return match
+    return None
+
+
+def output_snapshot():
+    lines = []
+    seen = set()
+    for root in [ROOT / "output", ROOT.parent / "output", Path.cwd() / "output"]:
+        key = str(root.resolve()) if root.exists() else str(root)
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(f"{key} exists={root.exists()}")
+        if root.exists():
+            for path in sorted(root.rglob("*"))[:80]:
+                if path.is_file():
+                    try:
+                        rel = path.relative_to(root)
+                    except ValueError:
+                        rel = path
+                    lines.append(f"  {rel} ({path.stat().st_size} bytes)")
+    return "\n".join(lines)
+
+
 def run_job(job_id, form):
     project = safe_project_name(form.get("project", [""])[0])
     script = form.get("script", [""])[0].strip()
@@ -379,7 +420,12 @@ def run_job(job_id, form):
         ]
         subprocess.run(assemble_cmd, cwd=ROOT, env=env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-        final_path = ROOT / "output" / project / "youtube_ad_broll_kling10.mp4"
+        final_path = find_final_video(project)
+        if final_path is None:
+            raise RuntimeError(
+                "最終MP4が見つかりません。組み立て処理の出力先を確認してください。\n"
+                + output_snapshot()
+            )
         final_copy = ROOT / "output" / "final_complete" / f"{project}_kling10.mp4"
         final_copy.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(final_path, final_copy)
