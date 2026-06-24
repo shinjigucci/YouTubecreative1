@@ -16,6 +16,13 @@ ROOT = Path(__file__).resolve().parent
 W, H = 1280, 720
 FPS = 30
 SUBTITLE_SAFE_Y = 560
+FALLBACK_LINES = [
+    "投稿から登録までの流れを整える。",
+    "Claude Codeで受け皿づくりを自動化する。",
+    "LP、PDF、無料教材まで一貫して準備する。",
+    "投稿を増やす前に、成果につながる導線を作る。",
+]
+MOJIBAKE_MARKERS = set("�縺繧譁蜍謚逋譛蛹荳荳螳蟆驥豌")
 
 
 def run(cmd: list[str]) -> None:
@@ -74,6 +81,17 @@ def chunks(text: str, max_chars: int) -> list[str]:
     return parts or [cleaned[:max_chars] or "Claude Code広告自動化"]
 
 
+def clean_display_text(text: str, scene_index: int) -> str:
+    cleaned = " ".join((text or "").lstrip("\ufeff").replace("\r", " ").replace("\n", " ").split())
+    if not cleaned:
+        return FALLBACK_LINES[scene_index % len(FALLBACK_LINES)]
+    question_ratio = cleaned.count("?") / max(1, len(cleaned))
+    mojibake_hits = sum(1 for char in cleaned if char in MOJIBAKE_MARKERS)
+    if "????" in cleaned or question_ratio > 0.08 or mojibake_hits >= 3:
+        return FALLBACK_LINES[scene_index % len(FALLBACK_LINES)]
+    return cleaned
+
+
 def fish_tts(text: str, out_path: Path, reference_id: str, model: str, speed: str) -> bool:
     key = os.environ.get("FISH_API_KEY") or os.environ.get("FISH_AUDIO_API_KEY")
     if not key:
@@ -116,16 +134,81 @@ def media_duration(path: Path) -> float:
 
 def draw_centered(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], text: str, fnt: ImageFont.ImageFont, fill: tuple[int, int, int]) -> None:
     x1, y1, x2, y2 = box
-    bbox = draw.textbbox((0, 0), text, font=fnt)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-    draw.text((x1 + (x2 - x1 - tw) / 2, y1 + (y2 - y1 - th) / 2 - 2), text, font=fnt, fill=fill)
+    size = getattr(fnt, "size", 24)
+    draw_fit_text(draw, box, text, size, 12, fill, max_lines=1, align="center")
 
 
 def draw_heavy_text(draw: ImageDraw.ImageDraw, xy: tuple[int, int], text: str, fnt: ImageFont.ImageFont, fill: tuple[int, int, int]) -> None:
     x, y = xy
     for dx, dy in [(0, 0), (1, 0), (0, 1), (1, 1)]:
         draw.text((x + dx, y + dy), text, font=fnt, fill=fill)
+
+
+def line_height(draw: ImageDraw.ImageDraw, fnt: ImageFont.ImageFont) -> int:
+    box = draw.textbbox((0, 0), "?", font=fnt)
+    return max(1, box[3] - box[1])
+
+
+def ellipsize_to_width(draw: ImageDraw.ImageDraw, text: str, fnt: ImageFont.ImageFont, max_width: int) -> str:
+    if text_width(draw, text, fnt) <= max_width:
+        return text
+    suffix = "..."
+    trimmed = text
+    while trimmed and text_width(draw, trimmed + suffix, fnt) > max_width:
+        trimmed = trimmed[:-1]
+    return (trimmed + suffix) if trimmed else suffix
+
+
+def fit_wrapped_lines(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    max_width: int,
+    max_height: int,
+    start_size: int,
+    min_size: int,
+    max_lines: int,
+    bold: bool = True,
+) -> tuple[ImageFont.ImageFont, list[str], int]:
+    for size in range(start_size, min_size - 1, -2):
+        fnt = font(size, bold)
+        lh = line_height(draw, fnt) + max(6, size // 7)
+        lines = wrap_text(draw, text, fnt, max_width)
+        if len(lines) <= max_lines and len(lines) * lh <= max_height:
+            return fnt, lines, lh
+    fnt = font(min_size, bold)
+    lh = line_height(draw, fnt) + max(5, min_size // 7)
+    lines = wrap_text(draw, text, fnt, max_width)[:max_lines]
+    if lines:
+        lines[-1] = ellipsize_to_width(draw, lines[-1], fnt, max_width)
+    return fnt, lines, lh
+
+
+def draw_fit_text(
+    draw: ImageDraw.ImageDraw,
+    box: tuple[int, int, int, int],
+    text: str,
+    start_size: int,
+    min_size: int,
+    fill: tuple[int, int, int],
+    max_lines: int = 1,
+    bold: bool = True,
+    align: str = "left",
+    heavy: bool = False,
+) -> None:
+    x1, y1, x2, y2 = box
+    fnt, lines, lh = fit_wrapped_lines(draw, text, x2 - x1, y2 - y1, start_size, min_size, max_lines, bold)
+    total_h = len(lines) * lh
+    y = y1 + max(0, (y2 - y1 - total_h) // 2)
+    for line in lines:
+        if align == "center":
+            x = x1 + max(0, (x2 - x1 - text_width(draw, line, fnt)) // 2)
+        else:
+            x = x1
+        if heavy:
+            draw_heavy_text(draw, (int(x), int(y)), line, fnt, fill)
+        else:
+            draw.text((int(x), int(y)), line, font=fnt, fill=fill)
+        y += lh
 
 
 def draw_soft_background(draw: ImageDraw.ImageDraw) -> None:
@@ -186,30 +269,40 @@ def draw_flow_cards(draw: ImageDraw.ImageDraw, y: int, accent: tuple[int, int, i
     for idx, (label, card_w) in enumerate(cards):
         x1 = x
         draw.rounded_rectangle([x1, y, x1 + card_w, y + 72], radius=12, fill=(255, 255, 255), outline=(188, 213, 231), width=2)
-        label_font = font(23 if label == "プロフィール" else 24)
-        draw_centered(draw, (x1 + 4, y + 13, x1 + card_w - 4, y + 59), label, label_font, (18, 34, 52))
+        draw_fit_text(draw, (x1 + 8, y + 12, x1 + card_w - 8, y + 60), label, 24, 16, (18, 34, 52), max_lines=1, align="center")
         x = x1 + card_w
         if idx < len(cards) - 1:
             draw.line([x + 3, y + 36, x + gap - 4, y + 36], fill=orange, width=5)
             draw.polygon([(x + gap - 4, y + 36), (x + gap - 15, y + 28), (x + gap - 15, y + 44)], fill=orange)
             x += gap
     draw.rounded_rectangle([525, y + 100, 1165, y + 150], radius=12, fill=accent)
-    draw_centered(draw, (525, y + 103, 1165, y + 147), "流れを整えると、発信が成果につながる", font(25), (255, 255, 255))
+    draw_fit_text(draw, (545, y + 106, 1145, y + 144), "流れを整えると、発信が成果につながる", 25, 16, (255, 255, 255), max_lines=1, align="center")
 
 
-def draw_main_headline(draw: ImageDraw.ImageDraw, text: str, accent: tuple[int, int, int]) -> None:
-    headline = text.strip()
-    sentence_parts = [part.strip() for part in headline.split("。") if part.strip()]
+def draw_takeaway_card(draw: ImageDraw.ImageDraw, accent: tuple[int, int, int], orange: tuple[int, int, int]) -> None:
+    draw.rounded_rectangle([52, 350, 472, 520], radius=18, fill=(255, 255, 255), outline=(205, 226, 240), width=2)
+    draw.rounded_rectangle([78, 378, 142, 442], radius=14, fill=(233, 244, 252))
+    draw.rectangle([96, 394, 124, 422], fill=(31, 55, 78))
+    draw.rectangle([101, 400, 120, 405], fill=(113, 174, 214))
+    draw.rectangle([101, 411, 116, 416], fill=(80, 134, 173))
+    draw_fit_text(draw, (168, 366, 450, 421), "投稿だけで終わらせない", 32, 20, accent, max_lines=2, heavy=True)
+    draw_fit_text(draw, (168, 424, 450, 459), "プロフィール、LP、PDF、登録まで", 23, 15, (23, 39, 56), max_lines=1)
+    draw.rounded_rectangle([168, 466, 430, 506], radius=20, fill=orange)
+    draw_fit_text(draw, (184, 470, 414, 500), "受け皿を先に整える", 22, 15, (16, 34, 48), max_lines=1, align="center")
+
+
+def draw_main_headline(draw: ImageDraw.ImageDraw, text: str, accent: tuple[int, int, int], scene_index: int) -> None:
+    headline = clean_display_text(text, scene_index)
+    sentence_parts = [part.strip() for part in headline.split("?") if part.strip()]
     if len(sentence_parts) > 1 and len(headline) > 42:
-        headline = sentence_parts[0] + "。"
-    headline_font = font(54)
-    lines = wrap_text(draw, headline, headline_font, 720)[:3]
-    y = 68
+        headline = sentence_parts[0] + "?"
+    fnt, lines, lh = fit_wrapped_lines(draw, headline, 720, 198, 54, 34, 3)
+    y = 72
     keywords = ["Claude Code", "自動化", "LP", "PDF", "登録", "無料教材", "セミナー", "受け皿", "根本的"]
     for line in lines:
         fill = accent if any(k in line for k in keywords) else (18, 26, 38)
-        draw_heavy_text(draw, (52, y), line, headline_font, fill)
-        y += 68
+        draw_heavy_text(draw, (52, y), line, fnt, fill)
+        y += lh
 
 
 def draw_scene(text: str, scene_index: int, total_scenes: int) -> Image.Image:
@@ -225,13 +318,11 @@ def draw_scene(text: str, scene_index: int, total_scenes: int) -> Image.Image:
     draw.rounded_rectangle([1038, 22, 1218, 62], radius=20, fill=orange)
     draw_centered(draw, (1038, 20, 1218, 60), "自動化", font(26), (16, 34, 48))
 
-    draw_main_headline(draw, text, accent)
+    draw_main_headline(draw, text, accent, scene_index)
     draw_laptop_visual(draw, 875, 92, 315, 188, accent)
 
     draw.line([0, 308, W, 308], fill=(204, 226, 242), width=2)
-    draw_icon_card(draw, (58, 350, 236, 490), "edit", "投稿文だけで終わらせない", accent)
-    draw.text((285, 382), "×", font=font(72), fill=(199, 221, 238))
-    draw_icon_card(draw, (330, 350, 508, 490), "yt", "動画台本を増やすだけにしない", accent)
+    draw_takeaway_card(draw, accent, orange)
     draw_flow_cards(draw, 358, accent, orange)
 
     draw.line([0, SUBTITLE_SAFE_Y, W, SUBTITLE_SAFE_Y], fill=(218, 235, 247), width=2)
