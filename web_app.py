@@ -1,4 +1,4 @@
-import base64
+﻿import base64
 import json
 import os
 import re
@@ -61,9 +61,12 @@ def safe_project_name(name):
 
 
 def first_sentences(script, count=3):
-    parts = [p.strip() for p in script.replace("\r\n", "\n").split("。") if p.strip()]
-    sentences = [p + "。" for p in parts]
-    return sentences[:count]
+    normalized = script.replace("\r\n", "\n").replace("\n", " ")
+    sentences = re.split(r"(?<=[。！？!?])", normalized)
+    cleaned = [p.strip() for p in sentences if p.strip()]
+    if cleaned:
+        return cleaned[:count]
+    return [normalized.strip()[:80]] if normalized.strip() else []
 
 
 def tone_guidance(tone_sample):
@@ -144,6 +147,112 @@ def openai_kling_prompts(openai_key, model, script, tone_sample="professional_cl
         return parsed["prompt1"], parsed["prompt2"]
     except Exception:
         return fallback_kling_prompts(script, tone_sample)
+
+
+def extract_openai_text(data):
+    text = data.get("output_text")
+    if text:
+        return text
+    chunks = []
+    for item in data.get("output", []):
+        for content in item.get("content", []):
+            if content.get("type") in {"output_text", "text"}:
+                chunks.append(content.get("text", ""))
+    return "\n".join(chunks).strip()
+
+
+def build_broll_script(script, revision_notes, openai_key, model):
+    notes = (revision_notes or "").strip()
+    if not notes or not openai_key:
+        return script
+    instruction = (
+        "あなたは日本語YouTube広告のBロールスライド編集者です。"
+        "ナレーション台本そのものは変えず、Bロールスライドに表示する短い日本語テキストだけを作り直してください。"
+        "ユーザーの修正指示を反映してください。"
+        "各スライドは1〜2文、最大70字程度。"
+        "Claude Code、自動化、投稿、プロフィール、LP、PDF、登録の流れが伝わるようにしてください。"
+        "説明や番号やJSONは不要です。スライドごとの文章だけを句点区切りで出力してください。"
+    )
+    user_content = f"元の広告台本:\n{script}\n\nBロール修正指示:\n{notes}"
+    try:
+        response = httpx.post(
+            "https://api.openai.com/v1/responses",
+            headers={"Authorization": f"Bearer {openai_key}", "Content-Type": "application/json"},
+            json={
+                "model": model or "gpt-4.1-mini",
+                "input": [
+                    {"role": "system", "content": instruction},
+                    {"role": "user", "content": user_content},
+                ],
+            },
+            timeout=60,
+        )
+        response.raise_for_status()
+        text = extract_openai_text(response.json()).strip()
+        return text or script
+    except Exception:
+        return script
+
+
+def write_input_scripts(project, script, broll_script):
+    input_dir = ROOT / "output" / project / "web_input"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    script_path = input_dir / "script.txt"
+    broll_script_path = input_dir / "broll_script.txt"
+    script_path.write_text(script, encoding="utf-8")
+    broll_script_path.write_text(broll_script, encoding="utf-8")
+    return input_dir, script_path, broll_script_path
+
+
+def render_preview_slides(project, broll_script, max_chars=34, limit=8):
+    from generate_youtube_ad_broll import chunks, draw_scene
+
+    preview_dir = ROOT / "output" / project / "preview_slides"
+    if preview_dir.exists():
+        shutil.rmtree(preview_dir)
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    parts = chunks(broll_script, max_chars)[:limit]
+    slide_paths = []
+    for index, part in enumerate(parts):
+        image = draw_scene(part, index, len(parts))
+        path = preview_dir / f"slide_{index + 1:02d}.png"
+        image.save(path)
+        slide_paths.append(str(path))
+    return slide_paths
+
+
+def run_preview_job(job_id, form):
+    project = safe_project_name(form.get("project", [""])[0])
+    script = form.get("script", [""])[0].strip()
+    revision_notes = form.get("revision_notes", [""])[0].strip()
+    openai_key = form.get("openai_key", [""])[0].strip()
+    openai_model = form.get("openai_model", ["gpt-4.1-mini"])[0].strip()
+
+    try:
+        if not script:
+            raise ValueError("台本が空です。")
+        set_status(job_id, "running", 10, "Bロール用スライドを準備しています")
+        broll_script = build_broll_script(script, revision_notes, openai_key, openai_model)
+        write_input_scripts(project, script, broll_script)
+        set_status(job_id, "running", 55, "Bロール確認画像を作成しています")
+        slide_paths = render_preview_slides(project, broll_script)
+        slides = [f"/preview-slide?job={job_id}&index={index}" for index in range(len(slide_paths))]
+        set_status(
+            job_id,
+            "complete",
+            100,
+            "Bロールスライド確認が完了しました。修正があれば指示を書いて、もう一度確認してください。",
+            result={
+                "project": project,
+                "kind": "preview",
+                "slides": slides,
+                "slide_paths": slide_paths,
+                "broll_script": broll_script,
+            },
+        )
+    except Exception as exc:
+        detail = str(exc).strip()
+        set_status(job_id, "error", message=f"確認画像の作成に失敗しました: {detail[-1200:]}", error=detail)
 
 
 def retry_after_seconds(response, fallback):
@@ -330,6 +439,7 @@ def output_snapshot():
 def run_job(job_id, form):
     project = safe_project_name(form.get("project", [""])[0])
     script = form.get("script", [""])[0].strip()
+    revision_notes = form.get("revision_notes", [""])[0].strip()
     tone_sample = form.get("tone_sample", ["professional_clean"])[0].strip() or "professional_clean"
     openai_key = form.get("openai_key", [""])[0].strip()
     openai_model = form.get("openai_model", ["gpt-4.1-mini"])[0].strip()
@@ -350,10 +460,8 @@ def run_job(job_id, form):
             raise ValueError("Fish Audio APIキーが必要です。")
 
         set_status(job_id, "running", 5, "台本を保存しています")
-        input_dir = ROOT / "output" / project / "web_input"
-        input_dir.mkdir(parents=True, exist_ok=True)
-        script_path = input_dir / "script.txt"
-        script_path.write_text(script, encoding="utf-8")
+        broll_script = build_broll_script(script, revision_notes, openai_key, openai_model)
+        input_dir, script_path, broll_script_path = write_input_scripts(project, script, broll_script)
 
         set_status(job_id, "running", 10, "Kling用プロンプトを作成しています")
         prompt1, prompt2 = openai_kling_prompts(openai_key, openai_model, script, tone_sample)
@@ -390,6 +498,8 @@ def run_job(job_id, form):
             "generate_youtube_ad_broll.py",
             "--script",
             str(script_path),
+            "--broll-script",
+            str(broll_script_path),
             "--project",
             project,
             "--fish-reference-id",
@@ -487,9 +597,16 @@ HTML = r"""<!doctype html>
     .message { margin-top: 10px; color: var(--muted); }
     .error { color: var(--danger); white-space: pre-wrap; }
     .result a { display: inline-block; margin-top: 12px; color: var(--accent); font-weight: 700; }
+    .secondary { background: #274761; }
+    .slides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }
+    .slide-card { border: 1px solid var(--line); border-radius: 8px; background: #fff; overflow: hidden; }
+    .slide-card img { display: block; width: 100%; height: auto; }
+    .slide-card div { padding: 8px 10px; font-size: 12px; color: var(--muted); }
+    #preview { margin-top: 18px; display: none; }
     @media (max-width: 900px) {
       form { grid-template-columns: 1fr; }
       textarea { min-height: 300px; }
+      .slides { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -506,6 +623,9 @@ HTML = r"""<!doctype html>
       <input id="project" name="project" placeholder="claude_code_ad_01">
       <label for="script">広告台本</label>
       <textarea id="script" name="script" required placeholder="ここにYouTube動画広告の台本を貼り付け"></textarea>
+      <label for="revision_notes">Bロール修正指示</label>
+      <textarea id="revision_notes" name="revision_notes" style="min-height:120px" placeholder="例：LP画面を大きく。文字を減らす。投稿→プロフィール→LP→PDF→登録の流れをもっと明確に。"></textarea>
+      <div class="hint">まずBロールスライド確認を押して、画像だけ確認します。ここではKling/Fishは動きません。</div>
     </section>
     <section>
       <h2>APIキー</h2>
@@ -549,11 +669,18 @@ HTML = r"""<!doctype html>
         </div>
       </div>
       <div class="actions">
+        <button id="previewBtn" type="button" class="secondary">Bロールスライド確認</button>
         <button id="submitBtn" type="submit">MP4生成</button>
       </div>
+      <div class="hint">確認でOKになってからMP4生成を押してください。MP4生成を押した時だけKling/Fishが動きます。</div>
       <div class="hint">APIキーはこの生成処理の中だけで使い、アプリ側では保存しません。</div>
     </section>
   </form>
+  <section id="preview">
+    <h2>Bロールスライド確認</h2>
+    <div class="hint">文字化け、文字量、流れをここで確認してください。直したい場合は「Bロール修正指示」に書いて、もう一度確認します。</div>
+    <div id="slides" class="slides"></div>
+  </section>
   <section id="status">
     <h2>生成状況</h2>
     <div class="bar"><div id="bar"></div></div>
@@ -570,27 +697,61 @@ const message = document.getElementById('message');
 const error = document.getElementById('error');
 const result = document.getElementById('result');
 const submitBtn = document.getElementById('submitBtn');
+const previewBtn = document.getElementById('previewBtn');
+const previewBox = document.getElementById('preview');
+const slides = document.getElementById('slides');
 let timer = null;
+
+previewBtn.addEventListener('click', async () => {
+  previewBtn.disabled = true;
+  error.textContent = '';
+  result.innerHTML = '';
+  slides.innerHTML = '';
+  previewBox.style.display = 'block';
+  statusBox.style.display = 'block';
+  message.textContent = 'Bロール確認画像を作成しています';
+  bar.style.width = '5%';
+  const res = await fetch('/api/preview-slides', { method: 'POST', body: new URLSearchParams(new FormData(form)) });
+  const data = await res.json();
+  if (!res.ok) {
+    previewBtn.disabled = false;
+    error.textContent = data.error || '確認画像を作成できませんでした';
+    return;
+  }
+  poll(data.job_id, 'preview');
+});
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   submitBtn.disabled = true;
+  previewBtn.disabled = true;
   error.textContent = '';
   result.innerHTML = '';
   statusBox.style.display = 'block';
-  message.textContent = '開始しています';
+  message.textContent = 'MP4生成を開始しています';
   bar.style.width = '2%';
   const res = await fetch('/api/jobs', { method: 'POST', body: new URLSearchParams(new FormData(form)) });
   const data = await res.json();
   if (!res.ok) {
     submitBtn.disabled = false;
+    previewBtn.disabled = false;
     error.textContent = data.error || '開始できませんでした';
     return;
   }
-  poll(data.job_id);
+  poll(data.job_id, 'video');
 });
 
-async function poll(jobId) {
+function renderPreview(data) {
+  const list = (data.result && data.result.slides) || [];
+  slides.innerHTML = list.map((src, index) => `
+    <div class="slide-card">
+      <img src="${src}&t=${Date.now()}" alt="Bロールスライド ${index + 1}">
+      <div>スライド ${index + 1}</div>
+    </div>
+  `).join('');
+}
+
+async function poll(jobId, mode) {
   clearTimeout(timer);
   const res = await fetch('/api/jobs/' + encodeURIComponent(jobId));
   const data = await res.json();
@@ -599,10 +760,17 @@ async function poll(jobId) {
   if (data.status === 'error') {
     error.textContent = data.error || '生成に失敗しました';
     submitBtn.disabled = false;
+    previewBtn.disabled = false;
     return;
   }
   if (data.status === 'complete') {
     submitBtn.disabled = false;
+    previewBtn.disabled = false;
+    if (mode === 'preview' || (data.result && data.result.kind === 'preview')) {
+      renderPreview(data);
+      result.innerHTML = '<div class="hint">このBロールで問題なければ、MP4生成を押してください。</div>';
+      return;
+    }
     result.innerHTML = `
       <a href="${data.result.download}">完成MP4をダウンロード</a>
       <button type="button" id="openFolderBtn">保存フォルダを開く</button>
@@ -613,7 +781,7 @@ async function poll(jobId) {
     });
     return;
   }
-  timer = setTimeout(() => poll(jobId), 3000);
+  timer = setTimeout(() => poll(jobId, mode), 3000);
 }
 </script>
 </body>
@@ -657,6 +825,29 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_json(200, job)
             return
+        if parsed.path == "/preview-slide":
+            query = parse_qs(parsed.query)
+            job_id = (query.get("job") or [""])[0]
+            try:
+                index = int((query.get("index") or ["0"])[0])
+            except ValueError:
+                index = 0
+            job = load_job(job_id)
+            paths = (job or {}).get("result", {}).get("slide_paths", [])
+            if not job or index < 0 or index >= len(paths):
+                self.send_json(404, {"error": "slide not found"})
+                return
+            path = Path(paths[index])
+            if not path.exists():
+                self.send_json(404, {"error": "slide file not found"})
+                return
+            data = path.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if parsed.path == "/download":
             query = parse_qs(parsed.query)
             job_id = (query.get("job") or [""])[0]
@@ -691,10 +882,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path != "/api/jobs":
+        if parsed.path not in {"/api/jobs", "/api/preview-slides"}:
             self.send_json(404, {"error": "not found"})
             return
-        if KLING_LOCK.locked():
+        if parsed.path == "/api/jobs" and KLING_LOCK.locked():
             self.send_json(429, {"error": "別の動画でKling生成中です。完了してから1本ずつ再実行してください。"})
             return
         length = int(self.headers.get("Content-Length", "0"))
@@ -705,7 +896,8 @@ class Handler(BaseHTTPRequestHandler):
         with JOBS_LOCK:
             JOBS[job_id] = job
             save_job(job)
-        thread = threading.Thread(target=run_job, args=(job_id, form), daemon=True)
+        target = run_preview_job if parsed.path == "/api/preview-slides" else run_job
+        thread = threading.Thread(target=target, args=(job_id, form), daemon=True)
         thread.start()
         self.send_json(202, {"job_id": job_id})
 
