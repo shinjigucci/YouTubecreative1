@@ -1,21 +1,16 @@
-﻿アップロード方法:
-このZIPをそのままGitHubに置くだけではRenderは中身を使いません。
-ZIPを展開して、中のファイルをGitHubリポジトリ直下へ上書きしてください。
+﻿UPLOAD_TO_GITHUB_RENDER_V14_SUBTITLE_ASS_FIXED
 
-必ず上書きするもの:
-- web_app.py
-- generate_youtube_ad_broll.py
-- assemble_two_kling_intro.py
-- requirements.txt
-- render.yaml
-- Procfile
-- fonts/NotoSansJP-VF.ttf
+修正内容:
+- 最終MP4生成時の字幕焼き込みを drawtext 多段連結から ASS 字幕1本方式へ変更
+- 長い台本で caption_***.txt が増えても FFmpeg の filter_complex が壊れないように修正
+- 日本語フォントエラー文と句読点分割の文字化けを修正
 
-反映確認:
-Render画面タイトルが「V13 合成ログ強化版」になっていれば成功です。
+GitHubで行うこと:
+1. このZIPを展開する
+2. 中のファイルをリポジトリ直下へ上書きアップロードする
+3. Commit changes を押す
+4. Renderの自動デプロイが Live になるまで待つ
 
-今回の修正:
-- 最終合成側にも日本語フォント自動取得を追加
-- 合成失敗時にstderr/stdout/出力ファイル一覧を画面に出す
-- 古い文字化けエラーメッセージを削除
-- 字幕合成フィルタを安定化
+注意:
+- GitHubへアップするのはZIPそのものではなく、中身のファイルです
+- output フォルダや __pycache__ はアップロード不要です

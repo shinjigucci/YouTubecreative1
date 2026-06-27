@@ -93,37 +93,71 @@ def font_file() -> Path:
 
 
 def ffmpeg_path(path: Path) -> str:
-    return str(path).replace("\\", "/").replace(":", "\\:")
+    try:
+        value = path.resolve().relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        value = str(path).replace("\\", "/").replace(":", "\\:")
+    return value.replace("'", "\\'")
 
 
-def build_caption_filter(script: str, out_dir: Path, total_duration: float) -> str:
+def ass_time(seconds: float) -> str:
+    seconds = max(0.0, seconds)
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    centis = int(round((seconds - int(seconds)) * 100))
+    if centis >= 100:
+        secs += 1
+        centis = 0
+    return f"{hours}:{minutes:02d}:{secs:02d}.{centis:02d}"
+
+
+def ass_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("{", "").replace("}", "")
+
+
+def write_ass_subtitles(script: str, out_dir: Path, total_duration: float) -> Path:
     captions = split_captions(script)
-    font = ffmpeg_path(font_file())
     caption_dir = out_dir / "captions"
     caption_dir.mkdir(parents=True, exist_ok=True)
+    ass_path = caption_dir / "captions.ass"
     segment = max(1.8, total_duration / max(1, len(captions)))
-    current = "vcat"
-    filters: list[str] = []
-    step = 0
+    dialogues: list[str] = []
     for index, caption in enumerate(captions):
         start = index * segment
         end = min(total_duration + 1.0, start + segment + 0.35)
-        lines = caption_lines(caption)
-        for line_index, line in enumerate(lines):
-            text_path = caption_dir / f"caption_{index:03d}_{line_index}.txt"
-            text_path.write_text(line, encoding="utf-8")
-            y_pos = "h-150" if len(lines) == 2 and line_index == 0 else ("h-96" if len(lines) == 2 else "h-118")
-            out = f"vcap{step}"
-            filters.append(
-                f"[{current}]drawtext=fontfile='{font}':textfile='{ffmpeg_path(text_path)}':"
-                f"x=(w-text_w)/2:y={y_pos}:fontsize=32:fontcolor=white:"
-                f"box=1:boxcolor=black@0.70:boxborderw=14:"
-                f"enable='between(t,{start:.2f},{end:.2f})'[{out}]"
-            )
-            current = out
-            step += 1
-    filters.append(f"[{current}]format=yuv420p[v]")
-    return ";".join(filters)
+        text = r"\N".join(ass_escape(line) for line in caption_lines(caption))
+        dialogues.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Default,,0,0,0,,{text}")
+
+    ass = "\n".join([
+        "[Script Info]",
+        "ScriptType: v4.00+",
+        "PlayResX: 1280",
+        "PlayResY: 720",
+        "WrapStyle: 0",
+        "ScaledBorderAndShadow: yes",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        "Style: Default,Noto Sans CJK JP,32,&H00FFFFFF,&H000000FF,&H00000000,&H99000000,1,0,0,0,100,100,0,0,3,1,0,2,80,80,46,1",
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+        *dialogues,
+        "",
+    ])
+    ass_path.write_text(ass, encoding="utf-8")
+    return ass_path
+
+
+def build_caption_filter(script: str, out_dir: Path, total_duration: float) -> str:
+    font_file()
+    ass_path = write_ass_subtitles(script, out_dir, total_duration)
+    fonts_dir = ROOT / "fonts"
+    return (
+        f"[vcat]subtitles=filename='{ffmpeg_path(ass_path)}':"
+        f"fontsdir='{ffmpeg_path(fonts_dir)}',format=yuv420p[v]"
+    )
 
 
 def output_snapshot(out_dir: Path) -> str:
