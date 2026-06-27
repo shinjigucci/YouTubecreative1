@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import json
@@ -211,98 +211,93 @@ def draw_fit_text(
         y += lh
 
 
-def draw_soft_background(draw: ImageDraw.ImageDraw) -> None:
+
+def draw_soft_background(draw: ImageDraw.ImageDraw, accent: tuple[int, int, int]) -> None:
     for y in range(H):
         mix = y / H
-        draw.line([(0, y), (W, y)], fill=(int(249 - mix * 12), int(253 - mix * 8), 255))
-    draw.polygon([(835, 0), (W, 0), (W, 282), (1010, 252)], fill=(215, 236, 250))
-    draw.polygon([(0, 610), (430, 548), (W, 640), (W, H), (0, H)], fill=(244, 250, 254))
-    draw.ellipse([960, -60, 1290, 270], outline=(204, 228, 245), width=2)
+        draw.line([(0, y), (W, y)], fill=(int(250 - mix * 8), int(253 - mix * 12), 255))
+    draw.rectangle([0, 0, W, 70], fill=(10, 24, 38))
+    draw.rectangle([0, 68, W, 73], fill=(255, 171, 48))
+    draw.polygon([(850, 72), (W, 72), (W, 318), (1015, 286)], fill=(220, 239, 251))
+    draw.polygon([(0, SUBTITLE_SAFE_Y), (W, SUBTITLE_SAFE_Y - 46), (W, H), (0, H)], fill=(245, 250, 253))
+    for x in range(0, W, 80):
+        draw.line([(x, 74), (x, SUBTITLE_SAFE_Y - 6)], fill=(237, 246, 252), width=1)
+    draw.line([(0, SUBTITLE_SAFE_Y), (W, SUBTITLE_SAFE_Y)], fill=(212, 232, 246), width=2)
+
+
+def draw_brand_header(draw: ImageDraw.ImageDraw, accent: tuple[int, int, int]) -> None:
+    draw.text((42, 18), "Claude Code", font=font(30), fill=(255, 255, 255))
+    draw.rounded_rectangle([1038, 15, 1218, 55], radius=20, fill=(255, 171, 48))
+    draw_fit_text(draw, [1060, 17, 1196, 53], "\u81ea\u52d5\u5316", 25, 18, (18, 34, 48), max_lines=1, align="center", heavy=True)
 
 
 def draw_laptop_visual(draw: ImageDraw.ImageDraw, x: int, y: int, w: int, h: int, accent: tuple[int, int, int]) -> None:
-    screen = [x + 18, y, x + w - 18, y + h - 24]
-    draw.rounded_rectangle(screen, radius=18, fill=(17, 55, 88), outline=(100, 157, 194), width=3)
-    draw.rectangle([screen[0] + 26, screen[1] + 24, screen[2] - 26, screen[3] - 24], fill=(9, 33, 57))
-    play_cx = (screen[0] + screen[2]) // 2
-    play_cy = (screen[1] + screen[3]) // 2
-    draw.ellipse([play_cx - 42, play_cy - 42, play_cx + 42, play_cy + 42], fill=(34, 105, 154))
-    draw.polygon([(play_cx - 12, play_cy - 24), (play_cx - 12, play_cy + 24), (play_cx + 26, play_cy)], fill=(255, 255, 255))
-    for i in range(4):
-        yy = screen[1] + 42 + i * 36
-        draw.rounded_rectangle([screen[2] - 96, yy, screen[2] - 36, yy + 22], radius=5, fill=(36, 92, 132))
-    base_y = y + h - 16
-    draw.polygon([(x, base_y), (x + w, base_y), (x + w - 76, base_y + 34), (x + 70, base_y + 34)], fill=(188, 213, 231))
-    draw.rectangle([x + 92, base_y + 11, x + w - 92, base_y + 19], fill=(146, 182, 207))
-    bar_x = x - 110
-    for i, bh in enumerate([30, 54, 76, 108]):
-        draw.rounded_rectangle([bar_x + i * 30, y + 142 - bh, bar_x + i * 30 + 18, y + 142], radius=5, fill=(178, 216, 240))
-    draw.line([bar_x - 6, y + 118, bar_x + 96, y + 42, bar_x + 142, y + 18], fill=(255, 255, 255), width=5)
-    draw.line([bar_x - 6, y + 118, bar_x + 96, y + 42, bar_x + 142, y + 18], fill=accent, width=3)
+    screen = [x + 18, y, x + w - 18, y + h - 28]
+    draw.rounded_rectangle(screen, radius=20, fill=(18, 58, 92), outline=(116, 172, 208), width=3)
+    draw.rectangle([screen[0] + 26, screen[1] + 22, screen[2] - 26, screen[3] - 22], fill=(9, 32, 55))
+    cx = (screen[0] + screen[2]) // 2
+    cy = (screen[1] + screen[3]) // 2
+    draw.ellipse([cx - 42, cy - 42, cx + 42, cy + 42], fill=(42, 119, 170))
+    draw.polygon([(cx - 10, cy - 25), (cx - 10, cy + 25), (cx + 30, cy)], fill=(255, 255, 255))
+    for i in range(3):
+        yy = screen[1] + 42 + i * 42
+        draw.rounded_rectangle([screen[2] - 110, yy, screen[2] - 36, yy + 26], radius=6, fill=(45, 103, 143))
+    base_y = y + h - 20
+    draw.polygon([(x, base_y), (x + w, base_y), (x + w - 82, base_y + 38), (x + 78, base_y + 38)], fill=(188, 214, 232))
+    draw.rectangle([x + 96, base_y + 13, x + w - 96, base_y + 22], fill=(143, 183, 210))
+    bx = x - 110
+    for i, bh in enumerate([36, 62, 88, 122]):
+        draw.rounded_rectangle([bx + i * 34, y + 150 - bh, bx + i * 34 + 20, y + 150], radius=5, fill=(178, 216, 240))
+    draw.line([bx - 8, y + 128, bx + 92, y + 42, bx + 150, y + 18], fill=(255, 255, 255), width=6)
+    draw.line([bx - 8, y + 128, bx + 92, y + 42, bx + 150, y + 18], fill=accent, width=3)
 
 
-def draw_icon_card(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], icon: str, title: str, accent: tuple[int, int, int]) -> None:
-    x1, y1, x2, y2 = box
-    draw.rounded_rectangle(box, radius=10, fill=(245, 250, 254), outline=(210, 228, 241), width=2)
-    cx = (x1 + x2) // 2
-    if icon == "edit":
-        draw.rectangle([cx - 30, y1 + 18, cx + 28, y1 + 58], fill=(31, 55, 78))
-        draw.rectangle([cx - 24, y1 + 24, cx + 22, y1 + 31], fill=(113, 174, 214))
-        draw.rectangle([cx - 24, y1 + 38, cx + 16, y1 + 45], fill=(80, 134, 173))
-        draw.polygon([(cx - 34, y1 + 15), (cx + 20, y1 + 15), (cx + 34, y1 + 28), (cx - 20, y1 + 28)], fill=(55, 79, 101))
-    else:
-        draw.rounded_rectangle([cx - 22, y1 + 20, cx + 22, y1 + 58], radius=8, fill=(35, 45, 58))
-        draw.rounded_rectangle([cx - 15, y1 + 29, cx + 15, y1 + 49], radius=5, fill=(230, 53, 42))
-        draw.polygon([(cx - 4, y1 + 32), (cx - 4, y1 + 47), (cx + 9, y1 + 39)], fill=(255, 255, 255))
-    title_font = font(21)
-    lines = wrap_text(draw, title, title_font, x2 - x1 - 20)[:3]
-    yy = y1 + 68
+def headline_from_text(text: str, scene_index: int) -> str:
+    cleaned = clean_display_text(text, scene_index)
+    endings = ["\u3002", "\uff01", "\uff1f", "!", "?"]
+    cut = len(cleaned)
+    for mark in endings:
+        pos = cleaned.find(mark)
+        if 10 <= pos < cut:
+            cut = pos + 1
+    headline = cleaned[:cut].strip()
+    if len(headline) > 46:
+        headline = headline[:46].rstrip("\u3001, ") + "\u3002"
+    return headline
+
+
+def draw_big_headline(draw: ImageDraw.ImageDraw, text: str, accent: tuple[int, int, int], scene_index: int) -> None:
+    headline = headline_from_text(text, scene_index)
+    fnt, lines, lh = fit_wrapped_lines(draw, headline, 760, 245, 64, 40, 3, True)
+    y = 122
+    key_terms = ["Claude Code", "\u81ea\u52d5\u5316", "LP", "PDF", "\u767b\u9332", "\u7121\u6599\u6559\u6750", "\u30bb\u30df\u30ca\u30fc", "\u53d7\u3051\u76bf"]
     for line in lines:
-        draw_centered(draw, (x1 + 8, yy, x2 - 8, yy + 28), line, title_font, accent)
-        yy += 27
-
-
-def draw_flow_cards(draw: ImageDraw.ImageDraw, y: int, accent: tuple[int, int, int], orange: tuple[int, int, int]) -> None:
-    cards = [("投稿", 92), ("プロフィール", 150), ("LP", 94), ("PDF", 96), ("登録", 96)]
-    x = 525
-    gap = 17
-    for idx, (label, card_w) in enumerate(cards):
-        x1 = x
-        draw.rounded_rectangle([x1, y, x1 + card_w, y + 72], radius=12, fill=(255, 255, 255), outline=(188, 213, 231), width=2)
-        draw_fit_text(draw, (x1 + 8, y + 12, x1 + card_w - 8, y + 60), label, 24, 16, (18, 34, 52), max_lines=1, align="center")
-        x = x1 + card_w
-        if idx < len(cards) - 1:
-            draw.line([x + 3, y + 36, x + gap - 4, y + 36], fill=orange, width=5)
-            draw.polygon([(x + gap - 4, y + 36), (x + gap - 15, y + 28), (x + gap - 15, y + 44)], fill=orange)
-            x += gap
-    draw.rounded_rectangle([525, y + 100, 1165, y + 150], radius=12, fill=accent)
-    draw_fit_text(draw, (545, y + 106, 1145, y + 144), "流れを整えると、発信が成果につながる", 25, 16, (255, 255, 255), max_lines=1, align="center")
-
-
-def draw_takeaway_card(draw: ImageDraw.ImageDraw, accent: tuple[int, int, int], orange: tuple[int, int, int]) -> None:
-    draw.rounded_rectangle([52, 350, 472, 520], radius=18, fill=(255, 255, 255), outline=(205, 226, 240), width=2)
-    draw.rounded_rectangle([78, 378, 142, 442], radius=14, fill=(233, 244, 252))
-    draw.rectangle([96, 394, 124, 422], fill=(31, 55, 78))
-    draw.rectangle([101, 400, 120, 405], fill=(113, 174, 214))
-    draw.rectangle([101, 411, 116, 416], fill=(80, 134, 173))
-    draw_fit_text(draw, (168, 366, 450, 421), "投稿だけで終わらせない", 32, 20, accent, max_lines=2, heavy=True)
-    draw_fit_text(draw, (168, 424, 450, 459), "プロフィール、LP、PDF、登録まで", 23, 15, (23, 39, 56), max_lines=1)
-    draw.rounded_rectangle([168, 466, 430, 506], radius=20, fill=orange)
-    draw_fit_text(draw, (184, 470, 414, 500), "受け皿を先に整える", 22, 15, (16, 34, 48), max_lines=1, align="center")
-
-
-def draw_main_headline(draw: ImageDraw.ImageDraw, text: str, accent: tuple[int, int, int], scene_index: int) -> None:
-    headline = clean_display_text(text, scene_index)
-    sentence_parts = [part.strip() for part in headline.split("?") if part.strip()]
-    if len(sentence_parts) > 1 and len(headline) > 42:
-        headline = sentence_parts[0] + "?"
-    fnt, lines, lh = fit_wrapped_lines(draw, headline, 720, 198, 54, 34, 3)
-    y = 72
-    keywords = ["Claude Code", "自動化", "LP", "PDF", "登録", "無料教材", "セミナー", "受け皿", "根本的"]
-    for line in lines:
-        fill = accent if any(k in line for k in keywords) else (18, 26, 38)
+        fill = accent if any(k in line for k in key_terms) else (17, 28, 42)
         draw_heavy_text(draw, (52, y), line, fnt, fill)
         y += lh
+
+
+def draw_large_step(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], title: str, body: str, accent: tuple[int, int, int], orange: tuple[int, int, int]) -> None:
+    x1, y1, x2, y2 = box
+    draw.rounded_rectangle(box, radius=18, fill=(255, 255, 255), outline=(202, 224, 239), width=2)
+    draw.rounded_rectangle([x1 + 18, y1 + 18, x1 + 72, y1 + 72], radius=14, fill=(232, 244, 252))
+    draw.rectangle([x1 + 35, y1 + 33, x1 + 55, y1 + 57], fill=accent)
+    draw_fit_text(draw, [x1 + 92, y1 + 15, x2 - 18, y1 + 62], title, 34, 22, accent, max_lines=1, heavy=True)
+    draw_fit_text(draw, [x1 + 92, y1 + 70, x2 - 18, y2 - 16], body, 26, 18, (29, 43, 58), max_lines=2)
+
+
+def draw_flow_summary(draw: ImageDraw.ImageDraw, accent: tuple[int, int, int], orange: tuple[int, int, int]) -> None:
+    labels = ["\u6295\u7a3f", "LP", "PDF", "\u767b\u9332"]
+    x = 612
+    y = 410
+    for i, label in enumerate(labels):
+        draw.rounded_rectangle([x, y, x + 106, y + 70], radius=15, fill=(255, 255, 255), outline=(190, 215, 232), width=2)
+        draw_fit_text(draw, [x + 8, y + 12, x + 98, y + 58], label, 32, 22, (17, 28, 42), max_lines=1, align="center", heavy=True)
+        if i < len(labels) - 1:
+            draw.line([x + 112, y + 35, x + 166, y + 35], fill=orange, width=6)
+            draw.polygon([(x + 166, y + 35), (x + 150, y + 24), (x + 150, y + 46)], fill=orange)
+        x += 164
+    draw_fit_text(draw, [612, 494, 1218, 540], "\u767a\u4fe1\u3092\u3001\u767b\u9332\u307e\u3067\u306e\u6d41\u308c\u306b\u5909\u3048\u308b", 31, 22, accent, max_lines=1, align="center", heavy=True)
 
 
 def draw_scene(text: str, scene_index: int, total_scenes: int) -> Image.Image:
@@ -311,22 +306,22 @@ def draw_scene(text: str, scene_index: int, total_scenes: int) -> Image.Image:
     orange = (255, 171, 48)
     img = Image.new("RGB", (W, H), (248, 252, 255))
     draw = ImageDraw.Draw(img)
-    draw_soft_background(draw)
+    draw_soft_background(draw, accent)
+    draw_brand_header(draw, accent)
+    draw_big_headline(draw, text, accent, scene_index)
+    draw_laptop_visual(draw, 910, 116, 260, 160, accent)
 
-    draw.rounded_rectangle([44, 22, 206, 58], radius=18, fill=(241, 247, 252), outline=(210, 229, 243), width=1)
-    draw_centered(draw, (44, 21, 206, 57), "Claude Code", font(22), (16, 42, 72))
-    draw.rounded_rectangle([1038, 22, 1218, 62], radius=20, fill=orange)
-    draw_centered(draw, (1038, 20, 1218, 60), "自動化", font(26), (16, 34, 48))
+    draw_large_step(
+        draw,
+        (52, 392, 590, 535),
+        "\u53d7\u3051\u76bf\u3092\u5148\u306b\u6574\u3048\u308b",
+        "\u6295\u7a3f\u306e\u524d\u306b\u3001\u30d7\u30ed\u30d5\u30a3\u30fc\u30eb\u30fbLP\u30fb\u7121\u6599\u6559\u6750\u307e\u3067\u6e96\u5099\u3059\u308b",
+        accent,
+        orange,
+    )
+    draw_flow_summary(draw, accent, orange)
 
-    draw_main_headline(draw, text, accent, scene_index)
-    draw_laptop_visual(draw, 875, 92, 315, 188, accent)
-
-    draw.line([0, 308, W, 308], fill=(204, 226, 242), width=2)
-    draw_takeaway_card(draw, accent, orange)
-    draw_flow_cards(draw, 358, accent, orange)
-
-    draw.line([0, SUBTITLE_SAFE_Y, W, SUBTITLE_SAFE_Y], fill=(218, 235, 247), width=2)
-    draw.text((1160, 525), f"{scene_index + 1}/{total_scenes}", font=font(22), fill=(93, 122, 146))
+    draw_fit_text(draw, [1010, 525, 1218, 552], f"{scene_index + 1}/{total_scenes}", 22, 16, (92, 121, 145), max_lines=1, align="right")
     return img
 
 
@@ -379,3 +374,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
