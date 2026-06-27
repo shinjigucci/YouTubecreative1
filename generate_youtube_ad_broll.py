@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parent
 W, H = 1280, 720
 FPS = 30
 SUBTITLE_SAFE_Y = 560
+JAPANESE_FONT_URL = "https://raw.githubusercontent.com/googlefonts/noto-cjk/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf"
+FONT_CACHE = ROOT / "fonts" / "NotoSansCJKjp-Regular.otf"
 FALLBACK_LINES = [
     "投稿から登録までの流れを整える。",
     "Claude Codeで受け皿づくりを自動化する。",
@@ -23,6 +25,8 @@ FALLBACK_LINES = [
     "投稿を増やす前に、成果につながる導線を作る。",
 ]
 MOJIBAKE_MARKERS = set("�縺繧譁蜍謚逋譛蛹荳荳螳蟆驥豌")
+_FONT_OBJECTS: dict[tuple[int, bool], ImageFont.ImageFont] = {}
+_FONT_READY: Path | None = None
 
 
 def run(cmd: list[str]) -> None:
@@ -32,9 +36,13 @@ def run(cmd: list[str]) -> None:
         raise RuntimeError(detail[-3000:] or f"Command failed: {' '.join(cmd)}")
 
 
-def font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+def japanese_font_path(bold: bool = True) -> Path | None:
+    global _FONT_READY
+    if _FONT_READY and _FONT_READY.exists():
+        return _FONT_READY
     candidates = [
         ROOT / "fonts" / "NotoSansJP-VF.ttf",
+        ROOT / "fonts" / "NotoSansCJKjp-Regular.otf",
         Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc" if bold else "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
         Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc" if bold else "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
         Path("C:/Windows/Fonts/NotoSansJP-VF.ttf"),
@@ -43,7 +51,28 @@ def font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont | ImageFont.Ima
     ]
     for item in candidates:
         if item.exists():
-            return ImageFont.truetype(str(item), size)
+            _FONT_READY = item
+            return item
+    try:
+        FONT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+        if not FONT_CACHE.exists() or FONT_CACHE.stat().st_size < 1_000_000:
+            urllib.request.urlretrieve(JAPANESE_FONT_URL, FONT_CACHE)
+        if FONT_CACHE.exists() and FONT_CACHE.stat().st_size > 1_000_000:
+            _FONT_READY = FONT_CACHE
+            return FONT_CACHE
+    except Exception:
+        return None
+    return None
+
+
+def font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    key = (size, bold)
+    if key in _FONT_OBJECTS:
+        return _FONT_OBJECTS[key]
+    path = japanese_font_path(bold)
+    if path:
+        _FONT_OBJECTS[key] = ImageFont.truetype(str(path), size)
+        return _FONT_OBJECTS[key]
     return ImageFont.load_default()
 
 

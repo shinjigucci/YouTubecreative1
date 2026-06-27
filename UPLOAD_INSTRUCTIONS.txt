@@ -1,0 +1,15 @@
+﻿アップロード方法:
+このZIPをそのままGitHubに置くだけではRenderは中身を使いません。
+ZIPを展開して、中のファイルをGitHubリポジトリ直下へ上書きしてください。
+
+必ず上書きするもの:
+- web_app.py
+- generate_youtube_ad_broll.py
+- assemble_two_kling_intro.py
+- requirements.txt
+- render.yaml
+- Procfile
+- fonts/NotoSansJP-VF.ttf
+
+反映確認:
+Render画面タイトルが「V12 日本語フォント固定版」になっていれば成功です。
