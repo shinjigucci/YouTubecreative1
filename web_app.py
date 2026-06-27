@@ -436,6 +436,24 @@ def output_snapshot():
     return "\n".join(lines)
 
 
+def run_checked(cmd, env, label):
+    proc = subprocess.run(cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if proc.returncode != 0:
+        detail = "\n".join(
+            part.strip()
+            for part in [
+                f"{label}に失敗しました。",
+                "Command: " + " ".join(str(x) for x in cmd),
+                "STDERR:\n" + (proc.stderr or "").strip(),
+                "STDOUT:\n" + (proc.stdout or "").strip(),
+                "Output snapshot:\n" + output_snapshot(),
+            ]
+            if part.strip()
+        )
+        raise RuntimeError(detail[-5000:])
+    return proc
+
+
 def run_job(job_id, form):
     project = safe_project_name(form.get("project", [""])[0])
     script = form.get("script", [""])[0].strip()
@@ -513,7 +531,7 @@ def run_job(job_id, form):
             "--tone-sample",
             tone_sample,
         ]
-        subprocess.run(generate_cmd, cwd=ROOT, env=env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        run_checked(generate_cmd, env, "Fish AudioナレーションとBロール生成")
 
         set_status(job_id, "running", 88, "Kling 10秒と本編を結合しています")
         assemble_cmd = [
@@ -528,7 +546,7 @@ def run_job(job_id, form):
             "--kling-next",
             str(next_path),
         ]
-        subprocess.run(assemble_cmd, cwd=ROOT, env=env, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        run_checked(assemble_cmd, env, "Kling動画とBロールの最終合成")
 
         final_path = find_final_video(project)
         if final_path is None:
@@ -562,7 +580,7 @@ HTML = r"""<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Claude Code広告自動化クリエイター 完全版 V12</title>
+  <title>Claude Code広告自動化クリエイター 完全版 V13</title>
   <style>
     :root {
       color-scheme: light;
@@ -612,7 +630,7 @@ HTML = r"""<!doctype html>
 </head>
 <body>
 <header>
-  <h1>Claude Code広告自動化クリエイター 完全版 V12 日本語フォント固定版</h1>
+  <h1>Claude Code広告自動化クリエイター 完全版 V13 合成ログ強化版</h1>
   <span>0〜10秒Kling / 10秒以降Claude CodeブランドBロール / Fish Audio / MP4</span>
 </header>
 <main>

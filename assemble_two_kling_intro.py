@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import subprocess
+import urllib.request
 from pathlib import Path
 
 import imageio_ffmpeg
@@ -9,13 +10,15 @@ import imageio_ffmpeg
 
 ROOT = Path(__file__).resolve().parent
 W, H = 1280, 720
+JAPANESE_FONT_URL = "https://raw.githubusercontent.com/googlefonts/noto-cjk/main/Sans/OTF/Japanese/NotoSansCJKjp-Regular.otf"
+FONT_CACHE = ROOT / "fonts" / "NotoSansCJKjp-Regular.otf"
 
 
 def run(cmd: list[str]) -> None:
     proc = subprocess.run(cmd, cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()
-        raise RuntimeError(detail[-3000:] or f"Command failed: {' '.join(cmd)}")
+        raise RuntimeError(detail[-4000:] or f"Command failed: {' '.join(cmd)}")
 
 
 def media_duration(path: Path) -> float:
@@ -36,7 +39,7 @@ def split_captions(text: str, max_chars: int = 30) -> list[str]:
     current = ""
     for char in cleaned:
         current += char
-        if len(current) >= max_chars and char in "。、！？!?":
+        if len(current) >= max_chars and char in "。！？、,.!?":
             captions.append(current.strip())
             current = ""
     if current.strip():
@@ -61,17 +64,32 @@ def caption_lines(caption: str, max_line_chars: int = 22) -> list[str]:
 
 def font_file() -> Path:
     candidates = [
+        FONT_CACHE,
+        ROOT / "fonts" / "NotoSansCJKjp-Regular.otf",
         ROOT / "fonts" / "NotoSansJP-VF.ttf",
+        Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
         Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc"),
+        Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc"),
         Path("/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc"),
         Path("C:/Windows/Fonts/NotoSansJP-VF.ttf"),
         Path("C:/Windows/Fonts/YuGothB.ttc"),
         Path("C:/Windows/Fonts/meiryob.ttc"),
     ]
     for candidate in candidates:
-        if candidate.exists():
+        if candidate.exists() and candidate.stat().st_size > 100000:
             return candidate
-    raise RuntimeError("日本語フォントが見つかりません。fonts/NotoSansJP-VF.ttf を同梱してください。")
+
+    FONT_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        urllib.request.urlretrieve(JAPANESE_FONT_URL, FONT_CACHE)
+    except Exception as exc:
+        raise RuntimeError(
+            "日本語フォントの取得に失敗しました。fonts/NotoSansJP-VF.ttf をGitHubへアップロードしてください。"
+            f" 詳細: {exc}"
+        ) from exc
+    if FONT_CACHE.exists() and FONT_CACHE.stat().st_size > 100000:
+        return FONT_CACHE
+    raise RuntimeError("日本語フォントが見つからず、自動取得にも失敗しました。")
 
 
 def ffmpeg_path(path: Path) -> str:
@@ -104,8 +122,18 @@ def build_caption_filter(script: str, out_dir: Path, total_duration: float) -> s
             )
             current = out
             step += 1
-    filters.append(f"[{current}]copy[v]")
+    filters.append(f"[{current}]format=yuv420p[v]")
     return ";".join(filters)
+
+
+def output_snapshot(out_dir: Path) -> str:
+    if not out_dir.exists():
+        return f"{out_dir} does not exist"
+    files = []
+    for path in out_dir.rglob("*"):
+        if path.is_file():
+            files.append(f"{path} ({path.stat().st_size} bytes)")
+    return "\n".join(files[-80:]) or f"{out_dir} is empty"
 
 
 def main() -> int:
@@ -123,8 +151,8 @@ def main() -> int:
     audio = out_dir / "narration.mp3"
     final = out_dir / "youtube_ad_broll_kling10.mp4"
     for path in [hook, next5, body, audio]:
-        if not path.exists():
-            raise RuntimeError(f"必要な素材がありません: {path}")
+        if not path.exists() or path.stat().st_size <= 0:
+            raise RuntimeError(f"必要な素材が見つからないか空です: {path}\n現在の出力ファイル:\n{output_snapshot(out_dir)}")
 
     script = Path(args.script).read_text(encoding="utf-8")
     audio_duration = media_duration(audio)
@@ -158,6 +186,8 @@ def main() -> int:
         "-movflags", "+faststart",
         str(final),
     ])
+    if not final.exists() or final.stat().st_size <= 0:
+        raise RuntimeError(f"最終MP4を書き出せませんでした: {final}\n現在の出力ファイル:\n{output_snapshot(out_dir)}")
     return 0
 
 
