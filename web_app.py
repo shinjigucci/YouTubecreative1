@@ -580,7 +580,7 @@ HTML = r"""<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Claude Code広告自動化クリエイター 完全版 V13</title>
+  <title>Claude Code広告自動化クリエイター 完全版 V15</title>
   <style>
     :root {
       color-scheme: light;
@@ -630,7 +630,7 @@ HTML = r"""<!doctype html>
 </head>
 <body>
 <header>
-  <h1>Claude Code広告自動化クリエイター 完全版 V13 合成ログ強化版</h1>
+  <h1>Claude Code広告自動化クリエイター 完全版 V15 字幕なし版</h1>
   <span>0〜10秒Kling / 10秒以降Claude CodeブランドBロール / Fish Audio / MP4</span>
 </header>
 <main>

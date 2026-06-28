@@ -188,9 +188,6 @@ def main() -> int:
         if not path.exists() or path.stat().st_size <= 0:
             raise RuntimeError(f"必要な素材が見つからないか空です: {path}\n現在の出力ファイル:\n{output_snapshot(out_dir)}")
 
-    script = Path(args.script).read_text(encoding="utf-8")
-    audio_duration = media_duration(audio)
-    caption_filter = build_caption_filter(script, out_dir, audio_duration)
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     filter_complex = (
         f"[0:v]scale={W}:{H}:force_original_aspect_ratio=decrease,"
@@ -199,8 +196,7 @@ def main() -> int:
         f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1[v1];"
         f"[2:v]scale={W}:{H}:force_original_aspect_ratio=decrease,"
         f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1[v2];"
-        f"[v0][v1][v2]concat=n=3:v=1:a=0[vcat];"
-        f"{caption_filter}"
+        f"[v0][v1][v2]concat=n=3:v=1:a=0,format=yuv420p[v]"
     )
     run([
         ffmpeg, "-y",
